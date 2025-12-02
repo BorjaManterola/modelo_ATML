@@ -81,8 +81,13 @@ def build_inputs(prompt: str, tokenizer: AutoTokenizer) -> Dict[str, torch.Tenso
             return _as_model_inputs(tok)
         except Exception:
             pass
-    # Fallback a prompt plano
-    return tokenizer(prompt, return_tensors="pt")
+    # Fallback a prompt plano (incluye attention_mask)
+    return tokenizer(
+        prompt,
+        return_tensors="pt",
+        padding=True,
+        return_attention_mask=True,
+    )
 
 
 def generate_text(
@@ -95,6 +100,16 @@ def generate_text(
     top_p: float = 0.9,
 ) -> str:
     inputs = build_inputs(prompt, tokenizer)
+    # Asegurar attention_mask incluso si viene de apply_chat_template
+    if "attention_mask" not in inputs:
+        pad_id = tokenizer.pad_token_id
+        if pad_id is None:
+            # sin pad_id, usar máscara de unos
+            attn = torch.ones_like(inputs["input_ids"])
+        else:
+            attn = (inputs["input_ids"] != pad_id).long()
+        inputs["attention_mask"] = attn
+
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_len = inputs["input_ids"].shape[1]
 
@@ -108,7 +123,9 @@ def generate_text(
     )
 
     with torch.no_grad():
+        print("[Estado] Iniciando inferencia...")
         outputs = model.generate(**inputs, generation_config=gen_cfg)
+        print("[Estado] Inferencia terminada.")
 
     # Extraer solo los tokens generados (sin el prompt)
     gen_tokens = outputs[0, input_len:]
