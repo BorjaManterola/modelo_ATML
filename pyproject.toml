@@ -1,0 +1,21 @@
+[project]
+name = "modelo-atml"
+version = "0.1.0"
+description = "Inferencia con TinyLlama + LoRA (PEFT)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.3,<3",
+    "transformers>=4.44,<5",
+    "peft>=0.18,<0.19",
+    "accelerate>=0.31",
+    "safetensors>=0.4",
+    "sentencepiece>=0.1.99",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+# uv usará este pyproject para crear el entorno y sincronizar dependencias
