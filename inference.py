@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 from peft import PeftModel
@@ -67,11 +67,33 @@ def _as_model_inputs(
     return tokens
 
 
-def build_inputs(prompt: str, tokenizer: AutoTokenizer) -> Dict[str, torch.Tensor]:
+def _fallback_plain_prompt(messages: List[Dict[str, str]]) -> str:
+    role_map = {"user": "Usuario", "assistant": "Asistente"}
+    lines = []
+    for msg in messages:
+        role = role_map.get(msg.get("role", ""), msg.get("role", ""))
+        content = msg.get("content", "")
+        lines.append(f"{role}: {content}")
+    if messages[-1].get("role") != "assistant":
+        lines.append("Asistente:")
+    return "\n".join(lines)
+
+
+def build_inputs(
+    tokenizer: AutoTokenizer,
+    prompt: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
+) -> Dict[str, torch.Tensor]:
+    if messages is None and prompt is None:
+        raise ValueError("Se requiere un prompt o una lista de mensajes.")
+
+    # Normalizar a lista de mensajes
+    if messages is None:
+        messages = [{"role": "user", "content": prompt}]
+
     # Intentar usar la plantilla de chat si existe en el tokenizer
     if hasattr(tokenizer, "apply_chat_template"):
         try:
-            messages = [{"role": "user", "content": prompt}]
             tok = tokenizer.apply_chat_template(
                 messages,
                 tokenize=True,
@@ -81,9 +103,11 @@ def build_inputs(prompt: str, tokenizer: AutoTokenizer) -> Dict[str, torch.Tenso
             return _as_model_inputs(tok)
         except Exception:
             pass
+
     # Fallback a prompt plano (incluye attention_mask)
+    plain_prompt = _fallback_plain_prompt(messages)
     return tokenizer(
-        prompt,
+        plain_prompt,
         return_tensors="pt",
         padding=True,
         return_attention_mask=True,
@@ -94,12 +118,13 @@ def generate_text(
     model,
     tokenizer,
     device: str,
-    prompt: str,
+    prompt: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
     max_new_tokens: int = 256,
     temperature: float = 0.7,
     top_p: float = 0.9,
 ) -> str:
-    inputs = build_inputs(prompt, tokenizer)
+    inputs = build_inputs(tokenizer, prompt=prompt, messages=messages)
     # Asegurar attention_mask incluso si viene de apply_chat_template
     if "attention_mask" not in inputs:
         pad_id = tokenizer.pad_token_id
